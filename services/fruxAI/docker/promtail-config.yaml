@@ -1,0 +1,55 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: fruxai-api
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: fruxai-api
+          __path__: /var/log/fruxai/api/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+
+  - job_name: fruxai-worker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: fruxai-worker
+          __path__: /var/log/fruxai/worker/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+    pipeline_stages:
+      - match:
+          selector: '{job="varlogs"}'
+          stages:
+            - regex:
+                expression: '^(?P<time>[^ ]+ [^ ]+) (?P<host>[^ ]+) (?P<process>[^:]+): (?P<message>.*)$'
+            - labels:
+                host: host
+                process: process

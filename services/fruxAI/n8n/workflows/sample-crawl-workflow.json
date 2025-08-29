@@ -1,0 +1,360 @@
+{
+  "name": "fruxAI Crawl Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "crawl-jobs",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Get Pending Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [240, 300],
+      "id": "http-request-1"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "fruxai_api_url",
+              "value": "http://fruxai-api:8001/fruxAI/api/v1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set API URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [60, 300],
+      "id": "set-api-url"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const jobs = $node[\"Get Pending Jobs\"].json.filter(job => job.status === 'pending');\n\nif (jobs.length === 0) {\n  return [];\n}\n\n// Mark job as running\nawait $node[\"Update Job Status\"].execute({\n  job_id: jobs[0].job_id,\n  status: 'running'\n});\n\nreturn jobs;"
+      },
+      "name": "Filter Pending Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300],
+      "id": "filter-jobs"
+    },
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "crawl-jobs/{{ $node[\"Filter Pending Jobs\"].json[0].job_id }}",
+        "responseMode": "responseNode",
+        "bodyContentType": "json",
+        "options": {},
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "running"
+            }
+          ]
+        }
+      },
+      "name": "Update Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [600, 300],
+      "id": "update-job-status"
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Filter Pending Jobs\"].json[0].url }}",
+        "responseFormat": "file",
+        "options": {
+          "followRedirects": true,
+          "useNtlm": false,
+          "timeout": 30
+        }
+      },
+      "name": "Crawl URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [780, 300],
+      "id": "crawl-url"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "content_type",
+              "value": "={{ $node[\"Crawl URL\"].response.headers['content-type'] }}"
+            },
+            {
+              "name": "file_size",
+              "value": "={{ $node[\"Crawl URL\"].response.body.length }}"
+            },
+            {
+              "name": "status_code",
+              "value": "={{ $node[\"Crawl URL\"].response.statusCode }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Response Info",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [960, 300],
+      "id": "extract-response-info"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "extracted_text",
+              "value": "={{ $node[\"Extract Text\"].json.extracted_text || '' }}"
+            },
+            {
+              "name": "company_name",
+              "value": "={{ $node[\"Extract Text\"].json.company_name || '' }}"
+            },
+            {
+              "name": "company_email",
+              "value": "={{ $node[\"Extract Text\"].json.company_email || '' }}"
+            },
+            {
+              "name": "company_phone",
+              "value": "={{ $node[\"Extract Text\"].json.company_phone || '' }}"
+            },
+            {
+              "name": "company_website",
+              "value": "={{ $node[\"Extract Text\"].json.company_website || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Prepare Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1320, 300],
+      "id": "prepare-metadata"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "metadata",
+        "responseMode": "responseNode",
+        "bodyContentType": "json",
+        "options": {},
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "crawl_job_id",
+              "value": "={{ $node[\"Filter Pending Jobs\"].json[0].id }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $node[\"Filter Pending Jobs\"].json[0].url }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $node[\"Extract Text\"].json.title || '' }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $node[\"Extract Text\"].json.description || '' }}"
+            },
+            {
+              "name": "content_type",
+              "value": "={{ $node[\"Extract Response Info\"].json.content_type }}"
+            },
+            {
+              "name": "file_size",
+              "value": "={{ $node[\"Extract Response Info\"].json.file_size }}"
+            },
+            {
+              "name": "status_code",
+              "value": "={{ $node[\"Extract Response Info\"].json.status_code }}"
+            },
+            {
+              "name": "extracted_text",
+              "value": "={{ $node[\"Prepare Metadata\"].json.extracted_text }}"
+            },
+            {
+              "name": "company_name",
+              "value": "={{ $node[\"Prepare Metadata\"].json.company_name }}"
+            },
+            {
+              "name": "company_email",
+              "value": "={{ $node[\"Prepare Metadata\"].json.company_email }}"
+            },
+            {
+              "name": "company_phone",
+              "value": "={{ $node[\"Prepare Metadata\"].json.company_phone }}"
+            },
+            {
+              "name": "company_website",
+              "value": "={{ $node[\"Prepare Metadata\"].json.company_website }}"
+            }
+          ]
+        }
+      },
+      "name": "Save Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1500, 300],
+      "id": "save-metadata"
+    },
+    {
+      "parameters": {
+        "httpMethod": "PUT",
+        "path": "crawl-jobs/{{ $node[\"Filter Pending Jobs\"].json[0].job_id }}",
+        "responseMode": "responseNode",
+        "bodyContentType": "json",
+        "options": {},
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "completed_at",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "name": "Mark Job Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1680, 300],
+      "id": "mark-completed"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Simple text extraction for demo\n// In production, this would call the worker's parsing functions\n\nconst content = $node[\"Crawl URL\"].response.body;\nconst url = $node[\"Filter Pending Jobs\"].json[0].url;\n\nconst result = {\n  title: '',\n  description: '',\n  extracted_text: '',\n  company_name: '',\n  company_email: '',\n  company_phone: '',\n  company_website: ''\n};\n\n// Basic HTML parsing (simplified)\nif (typeof content === 'string') {\n  // Extract title\n  const titleMatch = content.match(/<title[^>]*>([^<]+)<\\/title>/i);\n  if (titleMatch) {\n    result.title = titleMatch[1].trim();\n  }\n\n  // Extract meta description\n  const descMatch = content.match(/<meta[^>]*name=[\"']description[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>/i);\n  if (descMatch) {\n    result.description = descMatch[1].trim();\n  }\n\n  // Extract emails\n  const emailMatches = content.match(/\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b/g);\n  if (emailMatches) {\n    result.company_email = emailMatches[0];\n  }\n\n  // Basic text extraction\n  const textContent = content.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n  result.extracted_text = textContent.substring(0, 5000); // Limit size\n}\n\nreturn result;"
+      },
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300],
+      "id": "extract-text"
+    }
+  ],
+  "connections": {
+    "Set API URL": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter Pending Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Pending Jobs": {
+      "main": [
+        [
+          {
+            "node": "Update Job Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Crawl URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crawl URL": {
+      "main": [
+        [
+          {
+            "node": "Extract Response Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Response Info": {
+      "main": [
+        [
+          {
+            "node": "Extract Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Metadata": {
+      "main": [
+        [
+          {
+            "node": "Save Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Metadata": {
+      "main": [
+        [
+          {
+            "node": "Mark Job Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "sample-workflow"
+  },
+  "tags": [
+    {
+      "name": "fruxAI",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "crawler",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

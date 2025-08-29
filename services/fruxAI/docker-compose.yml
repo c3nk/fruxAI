@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # fruxAI API Service
+  fruxai-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8001:8001"
+    environment:
+      - SUPABASE_DB_HOST=fruxai-db
+      - SUPABASE_DB_PORT=5432
+      - SUPABASE_DB_NAME=fruxai
+      - SUPABASE_DB_USER=postgres
+      - SUPABASE_DB_PASSWORD=fruxai_password
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - ./storage:/app/storage
+      - ./config:/app/config
+    depends_on:
+      - fruxai-db
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # fruxAI Worker Service
+  fruxai-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - FRUX_API_URL=http://fruxai-api:8001
+      - SUPABASE_DB_HOST=fruxai-db
+      - SUPABASE_DB_PORT=5432
+      - SUPABASE_DB_NAME=fruxai
+      - SUPABASE_DB_USER=postgres
+      - SUPABASE_DB_PASSWORD=fruxai_password
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - ./storage:/app/storage
+      - ./config:/app/config
+    depends_on:
+      - fruxai-api
+      - fruxai-db
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # PostgreSQL Database (acting as Supabase local)
+  fruxai-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=fruxai
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=fruxai_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - fruxai_db_data:/var/lib/postgresql/data
+      - ./config/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # n8n Workflow Orchestration
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=fruxai_password
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=fruxai-db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=fruxai
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=fruxai_password
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/data/workflows
+    depends_on:
+      - fruxai-db
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # Prometheus Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=fruxai_password
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # Loki for Log Aggregation
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+      - ./docker/loki-config.yaml:/etc/loki/local-config.yaml
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+  # Promtail for Log Shipping
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./storage/logs:/var/log/fruxai
+      - ./docker/promtail-config.yaml:/etc/promtail/config.yml
+    networks:
+      - fruxai-network
+    restart: unless-stopped
+
+networks:
+  fruxai-network:
+    driver: bridge
+
+volumes:
+  fruxai_db_data:
+  n8n_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:

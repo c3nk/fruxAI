@@ -1,0 +1,52 @@
+# fruxAI Configuration
+
+api:
+  host: "0.0.0.0"
+  port: 8001
+  url: "http://localhost:8001"
+
+worker:
+  host: "0.0.0.0"
+  port: 8002
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "fruxai"
+  user: "postgres"
+  password: ""  # Set via environment variable
+
+n8n:
+  host: "localhost"
+  port: 5678
+  protocol: "http"
+
+storage:
+  base_path: "/app/storage"
+  pdfs_path: "/app/storage/pdfs"
+  htmls_path: "/app/storage/htmls"
+  metadata_path: "/app/storage/metadata"
+
+crawling:
+  default_rate: 1.0  # requests per second
+  max_depth: 2
+  user_agent: "fruxAI/1.0 (+https://github.com/c3nk/fruxAI)"
+  respect_robots: true
+  timeout: 30
+
+logging:
+  level: "INFO"
+  format: "json"
+
+kong:
+  host: "localhost"
+  port: 8000
+
+prometheus:
+  port: 8002
+  path: "/metrics"
+
+# Domain-specific rate limits
+domain_rates:
+  "example.com": 0.5  # 2 seconds between requests
+  "google.com": 0.2   # 5 seconds between requests

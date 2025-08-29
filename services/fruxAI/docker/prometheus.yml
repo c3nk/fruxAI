@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'fruxai-api'
+    static_configs:
+      - targets: ['fruxai-api:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'fruxai-worker'
+    static_configs:
+      - targets: ['fruxai-worker:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'n8n'
+    static_configs:
+      - targets: ['n8n:5678']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['fruxai-db:5432']
+    scrape_interval: 30s
+
+  - job_name: 'kong'
+    static_configs:
+      - targets: ['kong:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
