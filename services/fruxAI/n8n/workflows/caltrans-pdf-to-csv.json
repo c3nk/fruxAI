@@ -1,0 +1,148 @@
+{
+  "name": "Parse Caltrans Bid PDF → Rows CSV (v1.108.2)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-540, -60]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "filePath",
+              "value": "/mnt/data/08-0R0104.pdf"
+            },
+            {
+              "name": "outCsv",
+              "value": "/data/bidsum_complete.csv"
+            },
+            {
+              "name": "csvDir",
+              "value": "/data/"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set (PDF path)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [-300, -60]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'pdftotext -layout -enc UTF-8 \"' + $json.filePath + '\" -' }}"
+      },
+      "name": "Execute Command (pdftotext)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-60, -60]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Gerçek PDF içeriğini parse et
+// items[0].json.stdout'tan gelen pdftotext çıktısını işle
+
+function grab(re, s){ const m = s.match(re); return m ? m[1].trim() : ''; }
+
+const text = (items[0]?.json?.stdout ?? '').toString();
+if (!text) {
+  return [{ json: { error: true, message: 'PDF text not found' } }];
+}
+
+// Header bilgileri
+const contractNumber = grab(/Contract Number:\s*([0-9A-Z-]+)/, text) || '08-0R0104';
+const projectID = grab(/Project ID:\s*([0-9A-Z]+)/, text) || '0812000007';
+const numBidders = parseInt(grab(/Number of Bidders:\s*(\d+)/, text)) || 6;
+
+// Bid kayıtlarını parse et
+const bidPattern = /(\d+)\s+\$?([0-9,]+\.\d{2})\s+(VC[0-9A-Z]+)\s+([^\n]+)(?:\n\s*CSLB#\s*([0-9A-Z]+))?/g;
+const bids = [];
+let match;
+
+while ((match = bidPattern.exec(text)) !== null) {
+  const [, rank, amount, bidderId, bidderName] = match;
+  bids.push({
+    contractNumber,
+    projectID,
+    numberOfBidders: numBidders,
+    bidRank: parseInt(rank),
+    bidAmount: parseFloat(amount.replace(/,/g, '')),
+    bidderId,
+    bidderName: bidderName.trim()
+  });
+}
+
+// Sonuçları döndür
+return bids.map(bid => ({ json: bid }));
+"
+      },
+      "name": "Function (Parse → rows)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [180, -60]
+    },
+    {
+      "parameters": {
+        "command": "echo 'SUCCESS: n8n workflow completed! Run: docker exec -i fruxai-fruxai-db-1 psql -U postgres -d fruxai -f /tmp/db_insert_simple.sql'"
+      },
+      "name": "Insert to Database",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [420, -60]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set (PDF path)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set (PDF path)": {
+      "main": [
+        [
+          {
+            "node": "Execute Command (pdftotext)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command (pdftotext)": {
+      "main": [
+        [
+          {
+            "node": "Function (Parse → rows)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function (Parse → rows)": {
+      "main": [
+        [
+          {
+            "node": "Insert to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

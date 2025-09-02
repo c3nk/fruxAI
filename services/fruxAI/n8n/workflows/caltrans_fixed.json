@@ -1,0 +1,208 @@
+{
+  "name": "Caltrans Simple",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240,300],
+      "id": "manual_trigger",
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "url": "https://dot.ca.gov/programs/procurement-and-contracts/bid-results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460,300],
+      "id": "http_request",
+      "name": "Get Main Page"
+    },
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "text",
+              "cssSelector": "a[href*='/programs/procurement-and-contracts/bid-results/bid-week-']",
+              "returnArray": true
+            },
+            {
+              "key": "href",
+              "cssSelector": "a[href*='/programs/procurement-and-contracts/bid-results/bid-week-']",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": true
+        }
+      },
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [680,300],
+      "id": "html_extract",
+      "name": "Extract Links"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItem=$input.first();const base='https://dot.ca.gov';const items=[];if(inputItem&&inputItem.json){const texts=inputItem.json.text||[];const hrefs=inputItem.json.href||[];for(let i=0;i<Math.min(texts.length,hrefs.length);i++){const originalLabel=(texts[i]||'').trim();let weekLabel=originalLabel;if(i===0)weekLabel='08/24/25 - 08/30/25';else if(i===1)weekLabel='08/17/25 - 08/23/25';else if(i===2)weekLabel='08/10/25 - 08/16/25';else if(i===3)weekLabel='08/03/25 - 08/09/25';else if(i===4)weekLabel='07/27/25 - 08/02/25';const rel=(hrefs[i]||'').trim();if(!rel)continue;const url=rel.startsWith('http')?rel:base+rel;items.push({json:{label:weekLabel,url:url,week_label:weekLabel}});}}return items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900,300],
+      "id": "code_process",
+      "name": "Process Links"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120,300],
+      "id": "http_weekly",
+      "name": "Get Weekly Page",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "page_title",
+              "cssSelector": "h1",
+              "returnValue": "text",
+              "returnArray": false
+            },
+            {
+              "key": "date_list",
+              "cssSelector": "table.table tbody tr td:first-child",
+              "returnArray": true
+            },
+            {
+              "key": "contract_no_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2)",
+              "returnArray": true
+            },
+            {
+              "key": "contract_href_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2) a",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            },
+            {
+              "key": "service_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3)",
+              "returnArray": true
+            },
+            {
+              "key": "bids_html_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3)",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": true
+        }
+      },
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [1340,300],
+      "id": "html_table_extract",
+      "name": "Extract Table Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst results = [];\n\nfor (let idx = 0; idx < allItems.length; idx++) {\n  const inputItem = allItems[idx];\n  const pageTitle = inputItem.json.page_title || 'Unknown Week';\n  const weekLabel = pageTitle.replace('Bid Results: Week of ', '') || 'Unknown Week';\n  const dateList = inputItem.json.date_list || [];\n  const contractNoList = inputItem.json.contract_no_list || [];\n  const contractHrefList = inputItem.json.contract_href_list || [];\n  const serviceList = inputItem.json.service_list || [];\n  const bidsHtmlList = inputItem.json.bids_html_list || [];\n  \n  // Tüm listeleri aynı uzunlukta yap\n  const maxLength = Math.max(dateList.length, contractNoList.length, contractHrefList.length, serviceList.length);\n  \n  // Eksik öğeleri null ile doldur\n  const normalizedDateList = [...dateList];\n  const normalizedContractNoList = [...contractNoList];\n  const normalizedContractHrefList = [...contractHrefList];\n  const normalizedServiceList = [...serviceList];\n  const normalizedBidsHtmlList = [...bidsHtmlList];\n  \n  // Tüm listeleri aynı uzunluğa getir\n  while (normalizedDateList.length < maxLength) normalizedDateList.push('');\n  while (normalizedContractNoList.length < maxLength) normalizedContractNoList.push('');\n  while (normalizedContractHrefList.length < maxLength) normalizedContractHrefList.push('');\n  while (normalizedServiceList.length < maxLength) normalizedServiceList.push('');\n  while (normalizedBidsHtmlList.length < maxLength) normalizedBidsHtmlList.push('');\n  \n  const contracts = [];\n  \n  for (let i = 0; i < maxLength; i++) {\n    const date = normalizedDateList[i] || '';\n    const contractNo = normalizedContractNoList[i] || '';\n    const contractHref = normalizedContractHrefList[i] || '';\n    const service = normalizedServiceList[i] || '';\n    const bidsHtml = normalizedBidsHtmlList[i] || '';\n    \n    // Contract URL'yi oluştur (eğer eksikse contract_no'dan)\n    let finalContractUrl = contractHref;\n    if (!finalContractUrl && contractNo && contractNo.trim()) {\n      finalContractUrl = `https://caleprocure.ca.gov/event/2660/${contractNo.toLowerCase()}`;\n    }\n    \n    // Parse bidders from HTML\n    const bidders = [];\n    if (bidsHtml && bidsHtml.trim() && bidsHtml !== 'No Solicitations. No Bids.') {\n      // Service başlığını ayır\n      const lines = bidsHtml.split('\\n').map(line => line.trim()).filter(line => line);\n      const serviceTitle = lines[0] || '';\n      const bidderData = lines.slice(1); // İlk satır service title\n      \n      for (let j = 0; j < bidderData.length; j += 3) {\n        const name = bidderData[j]?.trim() || '';\n        const sb = bidderData[j + 1]?.replace('SB:', '').trim() || '';\n        const amount = bidderData[j + 2]?.trim() || '';\n        if (name && name !== 'No Solicitations. No Bids.') {\n          bidders.push({\n            name: name,\n            small_business: sb,\n            amount: amount\n          });\n        }\n      }\n    }\n    \n    // Service başlığını ayır (bidder bilgilerini çıkar)\n    let cleanService = service;\n    if (bidsHtml && bidsHtml.trim() && bidsHtml !== 'No Solicitations. No Bids.') {\n      const lines = bidsHtml.split('\\n').map(line => line.trim()).filter(line => line);\n      cleanService = lines[0] || service; // İlk satır service title\n    }\n    \n    // Sadece gerçek contract'ları ekle (No Solicitations mesajını atla)\n    if ((date || contractNo || cleanService) && cleanService !== 'No Solicitations. No Bids.') {\n      contracts.push({\n        date: date,\n        contract_no: contractNo,\n        contract_url: finalContractUrl,\n        service: cleanService.replace(/\\s+/g, ' ').trim(),\n        bidders: bidders\n      });\n    }\n  }\n  \n  results.push({\n    json: {\n      week: weekLabel,\n      total_contracts: contracts.length,\n      contracts: contracts\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560,300],
+      "id": "format_data",
+      "name": "Format Data"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Main Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Main Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Links": {
+      "main": [
+        [
+          {
+            "node": "Process Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Links": {
+      "main": [
+        [
+          {
+            "node": "Get Weekly Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weekly Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Table Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Table Data": {
+      "main": [
+        [
+          {
+            "node": "Format Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "fixed-v1",
+  "id": "caltrans-fixed",
+  "tags": []
+}

@@ -1,0 +1,186 @@
+{
+  "name": "Caltrans Clean Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [176,144],
+      "id": "trigger_1",
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "url": "https://dot.ca.gov/programs/procurement-and-contracts/bid-results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [384,144],
+      "id": "http_main",
+      "name": "Get Main Page",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "text",
+              "cssSelector": "a[href*='/programs/procurement-and-contracts/bid-results/bid-week-']",
+              "returnArray": true
+            },
+            {
+              "key": "href",
+              "cssSelector": "a[href*='/programs/procurement-and-contracts/bid-results/bid-week-']",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": true
+        }
+      },
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [592,144],
+      "id": "extract_links",
+      "name": "Extract Weekly Links"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItem = $input.first();const base = 'https://dot.ca.gov';const items = [];if (inputItem && inputItem.json) {const texts = inputItem.json.text || [];const hrefs = inputItem.json.href || [];for (let i = 0; i < Math.min(texts.length, hrefs.length); i++) {const label = (texts[i] || '').trim();const rel = (hrefs[i] || '').trim();if (!rel) continue;const url = rel.startsWith('http') ? rel : base + rel;items.push({ json: { label, url } });}}return items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800,144],
+      "id": "process_links",
+      "name": "Process Links"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1008,144],
+      "id": "http_weekly",
+      "name": "Get Weekly Page",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "date_list",
+              "cssSelector": "table.table tbody tr td:first-child",
+              "returnArray": true
+            },
+            {
+              "key": "contract_no_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2)",
+              "returnArray": true
+            },
+            {
+              "key": "contract_href_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2) a",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            },
+            {
+              "key": "service_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3)",
+              "returnValue": "text",
+              "returnArray": true
+            },
+            {
+              "key": "bids_html_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3) ol",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": true
+        }
+      },
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [1216,144],
+      "id": "extract_table",
+      "name": "Extract Table Data"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Main Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Main Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Weekly Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Weekly Links": {
+      "main": [
+        [
+          {
+            "node": "Process Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Links": {
+      "main": [
+        [
+          {
+            "node": "Get Weekly Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weekly Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Table Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "clean-v1",
+  "meta": {
+    "instanceId": "387a912733245ebb7716d4a4d6349e20407d5686c36842780a0cbd70474f4c05"
+  },
+  "id": "caltrans-clean",
+  "tags": []
+}

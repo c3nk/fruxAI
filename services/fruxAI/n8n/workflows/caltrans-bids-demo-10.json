@@ -1,0 +1,240 @@
+{
+  "name": "Caltrans Bid PDF Scraper (Final + Preliminary)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://ppmoe.dot.ca.gov/des/oe/planholders/bidsum-result.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-list",
+      "name": "Fetch List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Caltrans Bid page parser (Final + Preliminary) — n8n v1.108.2\n// Robust + self-diagnosing: if no items found, returns a single debug item instead of throwing.\n\nfunction toISO(s) {\n  if (!s) return '';\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n  const m = String(s).match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);\n  if (!m) return '';\n  const [, mm, dd, yyyy] = m;\n  return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;\n}\nfunction absUrl(href) {\n  if (!href) return '';\n  \n  // Eğer zaten tam URL ise direkt döndür\n  if (href.startsWith('http://') || href.startsWith('https://')) {\n    return href;\n  }\n  \n  // Eğer göreceli path ise base URL ile birleştir\n  if (href.startsWith('/')) {\n    try {\n      return new URL(href, 'https://ppmoe.dot.ca.gov/').toString();\n    } catch (e) {\n      return 'https://ppmoe.dot.ca.gov' + href;\n    }\n  }\n  \n  // Diğer durumlar için fallback\n  try {\n    return new URL(href, 'https://ppmoe.dot.ca.gov/').toString();\n  } catch (e) {\n    return href;\n  }\n}\nfunction slugify(s) {\n  return String(s)\n    .replace(/<[^>]+>/g,'')\n    .replace(/&nbsp;/g,' ')\n    .normalize('NFKD')\n    .replace(/[^a-zA-Z0-9]+/g,'-')\n    .replace(/^-+|-+$/g,'')\n    .toLowerCase();\n}\n\n// 1) HTML'i farklı olası yerlerden al\nconst root = (items && items[0] && items[0].json) ? items[0].json : {};\nconst htmlRaw =\n  (typeof root === 'string' && root) ||\n  (typeof root.data === 'string' && root.data) ||\n  (typeof root.body === 'string' && root.body) ||\n  '';\n\n// 2) HTML yoksa debug item döndür\nif (typeof htmlRaw !== 'string' || !htmlRaw.trim()) {\n  return [{\n    json: {\n      error: true,\n      reason: 'NoHTML',\n      message: 'HTML bulunamadı. HTTP Request node → Response format = String, Full Response = OFF olmalı.',\n      gotType: typeof htmlRaw,\n      prevNodeKeys: Object.keys(root || {})\n    }\n  }];\n}\n\n// 3) Normalize\nconst html = htmlRaw\n  .replace(/\\r/g,'')\n  .replace(/\\n/g,' ')\n  .replace(/\\s+/g,' ')\n  .replace(/> </g,'><');\n\n// 4) Önce \"Bid Opening …\" bölümlerine göre tara\nconst out = [];\nconst reSection = /Bid\\s*Opening\\s*(\\d{2}\\/\\d{2}\\/\\d{4}|\\d{4}-\\d{2}-\\d{2})([\\s\\S]*?)(?=Bid\\s*Opening|$)/gi;\nlet sec;\nwhile ((sec = reSection.exec(html)) !== null && out.length < 100) {\n  const dateISO = toISO(sec[1]);\n  const block = sec[2];\n\n  const reA = /<a\\s+[^>]*href=\"([^\"]*dl\\.php\\?(?:id|ser)=[^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>([\\s\\S]{0,240}?)(?=<a|$)/gi;\n  let a;\n  while ((a = reA.exec(block)) !== null && out.length < 100) {\n    const href = a[1];\n    const title = (a[2] || '').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim();\n    const tail  = a[3] || '';\n    const mRev  = tail.match(/Revised\\s+on\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{4})/i);\n    const revisionDate = mRev ? toISO(mRev[1]) : '';\n\n    const column = href.includes('dl.php?id=') ? 'final'\n                  : href.includes('dl.php?ser=') ? 'preliminary'\n                  : 'unknown';\n\n    const pdfUrl   = absUrl(href);\n    const fileName = `${dateISO || 'unknown'}__${slugify(title || 'file')}__${column}.pdf`;\n\n    out.push({ column, date: dateISO, title, revisionDate, pdfUrl, fileName });\n  }\n}\n\n// 5) Hiç bölüm yakalanmadıysa (veya 0 çıktı varsa) fallback: sayfanın tamamında linkleri tara,\n//    her link için geriye doğru en yakın \"Bid Opening …\" tarihini arayıp ata.\nif (out.length === 0) {\n  const reLinkAll = /<a\\s+[^>]*href=\"([^\"]*dl\\.php\\?(?:id|ser)=[^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi;\n  let m;\n  while ((m = reLinkAll.exec(html)) !== null && out.length < 100) {\n    const href = m[1];\n    const title = (m[2] || '').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim();\n\n    // Yakın çevrede tarih ara (öncesindeki 4000 karakter içinde)\n    const anchorIdx = m.index;\n    const start = Math.max(0, anchorIdx - 4000);\n    const ctx = html.slice(start, anchorIdx + 200); // biraz da sonrası\n    // son geçerli başlığı çek\n    let dateISO = '';\n    const reHdr = /Bid\\s*Opening\\s*(\\d{2}\\/\\d{2}\\/\\d{4}|\\d{4}-\\d{2}-\\d{2})/gi;\n    let hh; let last;\n    while ((hh = reHdr.exec(ctx)) !== null) last = hh;\n    if (last) dateISO = toISO(last[1]);\n\n    const column = href.includes('dl.php?id=') ? 'final'\n                  : href.includes('dl.php?ser=') ? 'preliminary'\n                  : 'unknown';\n\n    const pdfUrl   = absUrl(href);\n    const fileName = `${dateISO || 'unknown'}__${slugify(title || 'file')}__${column}.pdf`;\n\n    out.push({ column, date: dateISO, title, revisionDate: '', pdfUrl, fileName });\n  }\n}\n\n// 6) Hiçbir şey çıkmadıysa debug item döndür (HTML'den bir parça da koy)\nif (out.length === 0) {\n  return [{\n    json: {\n      error: true,\n      reason: 'NoMatches',\n      message: 'Sayfadan beklenen desenler çıkarılamadı. Regexleri gevşetmek gerekebilir.',\n      htmlPreview: html.slice(0, 1200)\n    }\n  }];\n}\n\n// 7) İlk 100 ile sınırla ve dön\nconst limited = out.slice(0, 100);\nreturn limited.map(r => ({ json: r }));\n"
+      },
+      "id": "parse-list",
+      "name": "Parse List",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Rastgele 3 item seç ve her birine random index ata\n\nif (!items || items.length === 0) {\n  return [];\n}\n\n// Tüm item'ları al\nconst allItems = items.map(item => item.json);\n\n// Eğer 3'ten az item varsa hepsini döndür\nif (allItems.length <= 3) {\n  return allItems.map(item => ({ json: item }));\n}\n\n// Rastgele 3 item seç\nconst selectedItems = [];\nconst usedIndices = new Set();\n\nwhile (selectedItems.length < 3) {\n  const randomIndex = Math.floor(Math.random() * allItems.length);\n  if (!usedIndices.has(randomIndex)) {\n    usedIndices.add(randomIndex);\n    selectedItems.push(allItems[randomIndex]);\n  }\n}\n\nreturn selectedItems.map(item => ({ json: item }));\n"
+      },
+      "id": "select-random-3",
+      "name": "Select Random 3",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 2000) + 1000 }}",
+        "unit": "milliseconds"
+      },
+      "id": "random-wait",
+      "name": "Random Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.pdfUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": false,
+        "bodyParameters": {
+          "parameters": []
+        }
+      },
+      "id": "download-pdf",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $json.fileName }}",
+        "options": {}
+      },
+      "id": "save-file",
+      "name": "Save File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": {
+          "keepOnlySet": true,
+          "values": [
+            {
+              "name": "column"
+            },
+            {
+              "name": "date"
+            },
+            {
+              "name": "title"
+            },
+            {
+              "name": "revisionDate"
+            },
+            {
+              "name": "pdfUrl"
+            },
+            {
+              "name": "fileName"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-fields",
+      "name": "Set Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "fileFormat": "csv",
+        "options": {
+          "fileName": "_index.csv"
+        },
+        "includeHeaders": true
+      },
+      "id": "write-csv",
+      "name": "Write CSV",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch List": {
+      "main": [
+        [
+          {
+            "node": "Parse List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse List": {
+      "main": [
+        [
+          {
+            "node": "Select Random 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Random 3": {
+      "main": [
+        [
+          {
+            "node": "Random Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Random Wait": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Save File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save File": {
+      "main": [
+        [
+          {
+            "node": "Set Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Fields": {
+      "main": [
+        [
+          {
+            "node": "Write CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

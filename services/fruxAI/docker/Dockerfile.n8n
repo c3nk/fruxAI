@@ -1,0 +1,11 @@
+# Custom n8n Dockerfile with PDF tools
+FROM n8nio/n8n:latest
+
+# Install system dependencies for PDF processing
+USER root
+RUN apk add --no-cache \
+    poppler-utils \
+    && rm -rf /var/cache/apk/*
+
+# Switch back to node user
+USER node

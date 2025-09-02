@@ -1,0 +1,77 @@
+Amaç
+Şu sayfayı (Caltrans Bid Summary Results) ziyaret et:
+https://ppmoe.dot.ca.gov/des/oe/planholders/bidsum-result.php
+Sayfada iki sütun var:
+Final Bid Summaries → linkler .../awards/bidsum/dl.php?id=####
+Recent Preliminary Results → linkler .../awards/bidsum/dl.php?ser=####
+Her “Bid Opening YYYY-MM-DD” başlığının altında bir veya daha fazla satır bulunur. Bazı satırlarda, linkten sonra “Revised on MM/DD/YYYY” bilgisi geçer.
+İstenen çıktı alanları (her PDF için):
+column → final | preliminary
+date → “Bid Opening” tarihi (YYYY-MM-DD)
+title → link metni (Final için genelde 08-0R0104 gibi, Preliminary için “Preliminary summary …”)
+revisionDate → varsa “Revised on …” (YYYY-MM-DD formatına normalize et)
+pdfUrl → PDF’in mutlak URL’si
+fileName → YYYY-MM-DD__{title}__{column}.pdf (dosya adı için güvenli karakterlere indirgenmiş)
+Ayrıca PDF’lerin tamamını yerel diske indir:
+Kayıt klasörü: /data/caltrans-bids/
+Dosya yolu: /data/caltrans-bids/{{ $json.fileName }}
+Node Mimarisi (n8n)
+Manual Trigger
+HTTP Request – Fetch List
+Method: GET
+URL: https://ppmoe.dot.ca.gov/des/oe/planholders/bidsum-result.php
+Response: string
+Function – Parse HTML to Items
+JS ile cheerio kullan.
+Mantık:
+HTML’i sırayla dolaş; son görülen “Bid Opening YYYY/MM/DD” veya “YYYY-MM-DD” tarihini currentDate olarak tut.
+Her anchor için href dl.php?id= içerirse column="final", dl.php?ser= içerirse column="preliminary".
+Link metnini title al.
+Aynı satırdaki “Revised on MM/DD/YYYY” parçasını (varsa) yakala ve ISO’ya (YYYY-MM-DD) çevir.
+date değerini currentDate’den doldur (ISO format).
+pdfUrl’u mutlak URL’e çevir.
+fileName’i güvenli hale getir (title içindeki boşluk/özel karakterleri - yap).
+Her öğeyi tek item olarak return items.
+HTTP Request – Download PDF (Per Item)
+Items from: Previous node (multiple items)
+Method: GET
+URL: {{$json["pdfUrl"]}}
+Response: File (binary)
+Binary Property: data
+Write Binary File – Save to Disk
+Binary Property: data
+File Path: /data/caltrans-bids/{{$json["fileName"]}}
+“Ensure Directory” açık olsun.
+Set – Keep Metadata
+Keep only: column, date, title, revisionDate, pdfUrl, fileName
+(Bu node, indirme sonrası metadata’yı temiz bir listede sunar)
+(Opsiyonel) Spreadsheet File
+Eğer mümkünse bir Spreadsheet File (Items to File) node ekle:
+Input: JSON fields
+Format: CSV
+File Path: /data/caltrans-bids/_index.csv
+Append if exists: true
+Function Node Kodu (Parse)
+cheerio kullan.
+“Bid Opening” başlıklarını regex ile Bid Opening\s+(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}) yakala; ISO’ya çevir.
+Her link için href kontrolüyle column tayin et.
+Link satırındaki sibling text’te Revised on (\d{2}/\d{2}/\d{4}) varsa ISO’ya çevir.
+Preliminary link metni “Preliminary summary …” ise doğrudan title olarak bırak.
+URL’leri new URL(href, 'https://ppmoe.dot.ca.gov/') ile tamamla.
+fileName formatı: ${date}__${slug(title)}__${column}.pdf (slug → non-alnum → -, trim/lowercase).
+Her bulunan link için bir item döndür.
+İthal Edilebilir JSON
+Workflow’a düzgün isim ver: “Caltrans Bid PDF Scraper (Final + Preliminary)”.
+n8n 1.x export formatında geçerli bir JSON oluştur.
+Her node isimleri net olsun: “Fetch List”, “Parse List”, “Download PDF”, “Save File”, “Set Fields”, “Write CSV (optional)”.
+Bağlantılar (connections) eksiksiz ve sırayla olsun: Trigger → Fetch List → Parse List → Download PDF → Save File → Set Fields → (ops: Write CSV).
+Dayanıklılık / Kenar Durumlar
+Eğer bir linkin hemen yanında “Revised on …” yoksa revisionDate boş bırak.
+Bid Opening satırı değiştiğinde currentDate güncellensin; o tarihten sonraki linkler bu tarihle etiketlensin.
+Aynı PDF’i iki kez indirmemek için file path varsa “overwrite: true” kullan veya önce kontrol et (n8n node ayarı varsa).
+Hata durumunda node kendi hata mesajını döndürsün, workflow genelini durdurmasın (node’larda “Continue On Fail” seçeneklerini mantıklı yerlerde aç).
+Teslim
+Tek çıktı: n8n workflow export JSON (code fence içinde).
+Ayrı dosyaya gerek yok.
+Kodda açıklayıcı yorumlar bulunsun.
+Çalışır durumda olsun; cheerio importu Function node’da require('cheerio') ile yapılsın.

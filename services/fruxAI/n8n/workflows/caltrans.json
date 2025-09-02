@@ -1,0 +1,322 @@
+{
+  "name": "bununla-ilerle",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5f86e245-eb64-44e9-93aa-c84c6d1f4503",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        416,
+        176
+      ],
+      "id": "408db4de-31c1-49ca-9581-f0a78abdf53e",
+      "name": "Debug - Check Weekly Links"
+    },
+    {
+      "parameters": {
+        "url": "https://dot.ca.gov/programs/procurement-and-contracts/bid-results",
+        "options": {}
+      },
+      "id": "50541173-a301-438b-878d-fd550201afcf",
+      "name": "HTTP Request1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItem = $input.first();\nconst base = 'https://dot.ca.gov';\nconst items = [];\n\nif (inputItem && inputItem.json) {\n  const texts = inputItem.json.text || [];\n  const hrefs = inputItem.json.href || [];\n\n  console.log('Found texts:', texts.length);\n  console.log('Found hrefs:', hrefs.length);\n\n  // Her href için karşılık gelen text'i bul\n  for (let i = 0; i < Math.min(texts.length, hrefs.length); i++) {\n    const label = (texts[i] || '').trim();\n    const rel = (hrefs[i] || '').trim();\n    if (!rel) continue;\n\n    const url = rel.startsWith('http') ? rel : `${base}${rel.startsWith('/') ? '' : '/'}${rel}`;\n    items.push({ json: { label, url } });\n  }\n}\n\nconsole.log(`Processed ${items.length} weekly links`);\n\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "a1d34f47-96b6-4f5d-ab2b-54bb031a36c3",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json[\"url\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "06bf6cdf-0e39-495a-984b-58cfd846161f",
+      "name": "HTTP Request",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        832,
+        -304
+      ],
+      "id": "88af2185-72fa-469d-bce2-7088cdfd4169",
+      "name": "Debug - Processed Links Count"
+    },
+
+
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "date_list",
+              "cssSelector": "table.table tbody tr td:first-child",
+              "returnArray": true
+            },
+            {
+              "key": "contract_no_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2)",
+              "returnArray": true
+            },
+            {
+              "key": "contract_href_list",
+              "cssSelector": "table.table tbody tr td:nth-child(2) a",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            },
+            {
+              "key": "service_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3)",
+              "returnValue": "text",
+              "returnArray": true
+            },
+            {
+              "key": "bids_html_list",
+              "cssSelector": "table.table tbody tr td:nth-child(3) ol",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3d9ea180-beb2-452e-b5b8-717e3239a5f7",
+      "name": "HTML Extract (table → arrays)",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        0
+      ]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfunction parseBids(bidsHtml) {\n  const bidders = [];\n  if (!bidsHtml || bidsHtml.trim() === '') {\n    return bidders;\n  }\n\n  // HTML'den basit parsing\n  const lines = bidsHtml.split('<br>').map(l => l.trim()).filter(l => l.length > 0);\n\n  // 3'erli gruplar halinde işle (bidder name, SB, amount)\n  for (let i = 0; i + 2 < lines.length; i += 3) {\n    const bidderName = lines[i] || '';\n    const sbLine = lines[i+1] || '';\n    const amountLine = lines[i+2] || '';\n\n    // SB preference çıkar\n    let sb = null;\n    if (sbLine.includes('SB: Y')) {\n      sb = 'Y';\n    } else if (sbLine.includes('SB: N')) {\n      sb = 'N';\n    }\n\n    // Amount çıkar ve parse et\n    let bidAmountText = '';\n    let bidAmountNumber = null;\n    if (amountLine) {\n      const dollarIndex = amountLine.indexOf('$');\n      if (dollarIndex >= 0) {\n        bidAmountText = amountLine.substring(dollarIndex);\n        const cleanAmount = bidAmountText.replace(/,/g, '').replace('$', '');\n        bidAmountNumber = parseFloat(cleanAmount);\n      }\n    }\n\n    if (bidderName && bidAmountText && bidAmountNumber !== null && !isNaN(bidAmountNumber)) {\n      bidders.push({\n        bidder_name: bidderName,\n        sb_preference: sb,\n        bid_amount_text: bidAmountText,\n        bid_amount_number: bidAmountNumber\n      });\n    }\n  }\n\n  return bidders;\n}\n\nfor (let itemIndex = 0; itemIndex < items.length; itemIndex++) {\n  const item = items[itemIndex];\n  const dates = item.json.date_list || [];\n  const contractNos = item.json.contract_no_list || [];\n  const hrefs = item.json.contract_href_list || [];\n  const services = item.json.service_list || [];\n  const bidsHtml = item.json.bids_html_list || [];\n\n  const maxLen = Math.max(dates.length, contractNos.length, hrefs.length, services.length, bidsHtml.length);\n\n  for (let i = 0; i < maxLen; i++) {\n    const date = (dates[i] || '').trim();\n    const contractNo = (contractNos[i] || '').trim();\n    let service = (services[i] || '').trim();
+    // Service'den bidder bilgilerini temizle
+    if (service.includes('\n')) {
+      service = service.split('\n')[0].trim();
+    }\n    let href = (hrefs[i] || '').trim();\n    const bids = (bidsHtml[i] || '').trim();\n\n    // Contract URL oluştur\n    let contractUrl = '';\n    if (contractNo && !href.includes('http')) {\n      contractUrl = 'https://caleprocure.ca.gov/event/2660/' + contractNo;\n    } else {\n      contractUrl = href;\n    }\n\n    // Basit bidder parsing\n    const bidders = [];\n    if (bids) {\n      let liStart = bids.indexOf('<li>');\n      while (liStart >= 0) {\n        const liEnd = bids.indexOf('</li>', liStart);\n        if (liEnd >= 0) {\n          const liContent = bids.substring(liStart + 4, liEnd);\n          const parts = liContent.split('<br>');\n          if (parts.length >= 3) {\n            const bidderName = parts[0].trim();\n            const sbLine = parts[1].trim();\n            const amountLine = parts[2].trim();\n            \n            let sb = null;\n            if (sbLine.indexOf('SB: Y') >= 0) sb = 'Y';\n            else if (sbLine.indexOf('SB: N') >= 0) sb = 'N';\n            \n            let bidAmountText = '';\n            let bidAmountNumber = null;\n            const dollarPos = amountLine.indexOf('$');\n            if (dollarPos >= 0) {\n              bidAmountText = amountLine.substring(dollarPos);\n              const cleanAmount = bidAmountText.replace(/,/g, '').replace('$', '');\n              bidAmountNumber = parseFloat(cleanAmount);\n            }\n            \n            if (bidderName && bidAmountText) {\n              bidders.push({\n                bidder_name: bidderName,\n                sb_preference: sb,\n                bid_amount_text: bidAmountText,\n                bid_amount_number: bidAmountNumber\n              });\n            }\n          }\n        }\n        liStart = bids.indexOf('<li>', liStart + 1);\n      }\n    }\n\n    if (bidders.length > 0) {\n      // Her bidder için ayrı item oluştur\n      for (const bidder of bidders) {\n        const result = {\n          date: date,\n          contract_no: contractNo,\n          contract_url: contractUrl,\n          service: service,\n          bidder_name: bidder.bidder_name,\n          sb_preference: bidder.sb_preference,\n          bid_amount_text: bidder.bid_amount_text,\n          bid_amount_number: bidder.bid_amount_number,\n          row_index: i + 1,\n          source_item: itemIndex\n        };\n\n        results.push({ json: result });\n      }\n    } else if (date || contractNo || service) {\n      // Bidder yoksa da contract bilgilerini ekle\n      const result = {\n        date: date,\n        contract_no: contractNo,\n        contract_url: contractUrl,\n        service: service,\n        bidder_name: '',\n        sb_preference: null,\n        bid_amount_text: '',\n        bid_amount_number: null,\n        row_index: i + 1,\n        source_item: itemIndex\n      };\n\n      results.push({ json: result });\n    }\n  }\n}\n\nconsole.log('Process Contracts: Generated ' + results.length + ' bidder items');\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "process-contracts-code",
+      "name": "Process Contracts"
+    },
+
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "text",
+              "cssSelector": "a[href*=\"/programs/procurement-and-contracts/bid-results/bid-week-\"]",
+              "returnArray": true
+            },
+            {
+              "key": "href",
+              "cssSelector": "a[href*=\"/programs/procurement-and-contracts/bid-results/bid-week-\"]",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {
+          "trimValues": true
+        }
+      },
+      "id": "16487b31-af25-4413-8f61-1a403fb7022d",
+      "name": "HTML Extract (weekly links)",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [
+        416,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "HTML Extract (weekly links)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Debug - Processed Links Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTML Extract (table → arrays)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML Extract (table → arrays)": {
+      "main": [
+        [
+          {
+            "node": "Clean Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Data": {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "date",
+              "value": "={{ $json.date_list && $json.date_list[0] ? $json.date_list[0].trim() : '' }}"
+            },
+            {
+              "name": "contract_no",
+              "value": "={{ $json.contract_no_list && $json.contract_no_list[0] ? $json.contract_no_list[0].trim() : '' }}"
+            },
+            {
+              "name": "service",
+              "value": "={{ $json.service_list && $json.service_list[0] ? $json.service_list[0].split('\n')[0].trim() : '' }}"
+            },
+            {
+              "name": "contract_url",
+              "value": "={{ $json.contract_no_list && $json.contract_no_list[0] ? 'https://caleprocure.ca.gov/event/2660/' + $json.contract_no_list[0].trim() : '' }}"
+            },
+            {
+              "name": "bidder_name",
+              "value": "={{ '' }}"
+            },
+            {
+              "name": "sb_preference",
+              "value": "={{ null }}"
+            },
+            {
+              "name": "bid_amount_text",
+              "value": "={{ '' }}"
+            },
+            {
+              "name": "bid_amount_number",
+              "value": "={{ null }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        1264,
+        176
+      ],
+      "id": "clean-data-set",
+      "name": "Clean Data",
+      "main": []
+    },
+    "HTML Extract (weekly links)": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug - Check Weekly Links": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug - Processed Links Count": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b3efc7c7-d54e-4083-a400-afadf5195d3a",
+  "meta": {
+    "instanceId": "387a912733245ebb7716d4a4d6349e20407d5686c36842780a0cbd70474f4c05"
+  },
+  "id": "7NTiR6WpfExXNk4j",
+  "tags": []
+}
