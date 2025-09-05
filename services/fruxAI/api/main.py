@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.config.database import init_db
-from app.routes import health, crawl_jobs, metadata, reports, caltrans_bids
+from app.routes import health, crawl_jobs, metadata, reports, caltrans_bids, tenders
 import logging
 
 # Configure logging
@@ -39,6 +39,7 @@ app.include_router(crawl_jobs.router, prefix="/api/v1")
 app.include_router(metadata.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(caltrans_bids.router)
+app.include_router(tenders.router, prefix="/api/v1")
 
 @app.get("/fruxAI/api/v1/health")
 async def health_check():

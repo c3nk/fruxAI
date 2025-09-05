@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from app.config.database import get_db
+from app.config.database import get_connection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,7 @@ async def insert_caltrans_bids(data: dict):
 
     try:
         # Get database session
-        async with get_db() as session:
+        async with get_connection() as session:
             # Insert bid data
             bids = [
                 ('10-1L8604', 6, 1, 2053700.00, 'VC1200002736'),
@@ -67,7 +66,7 @@ async def get_caltrans_bids():
     Get all Caltrans bids from database
     """
     try:
-        async with get_db() as session:
+        async with get_connection() as session:
             result = await session.execute(
                 text("SELECT * FROM caltrans_bids ORDER BY bid_rank")
             )

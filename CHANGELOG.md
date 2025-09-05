@@ -21,7 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frontend dashboard structure
 - Comprehensive documentation
 
-### Added - Caltrans Workflow Development (Latest)
+### Added - Tender PDF Ingestion Service (Latest)
+- ✅ **State-aware PDF Processing**: Complete tender PDF ingestion service with state isolation
+- ✅ **Database Schema**: New PostgreSQL tables (tenders, bids, firms, tender_winner_history) with state partitioning
+- ✅ **Docling Integration**: Advanced PDF parsing with table extraction and metadata processing
+- ✅ **HEAD_ALIASES System**: Configurable column mapping for different PDF formats
+- ✅ **API Endpoints**: State-aware REST API for tender and bid management
+- ✅ **File System Organization**: State-based folder structure (/data/{STATE}/incoming/processed/exports/)
+- ✅ **Export Functionality**: JSON, CSV, and GitHub-flavored Markdown exports per PDF
+- ✅ **Background Processing**: Asynchronous PDF processing with queue management
+- ✅ **Multi-State Support**: Designed for CA and future state expansions
+
+### Added - Caltrans Workflow Development
 - ✅ Complete Caltrans bid data scraping workflow
 - ✅ 7-step automated workflow (Start → Main Page → Extract Links → Process Links → Get Weekly Pages → Extract Table Data → Format Data)
 - ✅ Parallel processing for all 5 weekly bid pages
@@ -92,17 +103,24 @@ Given a version number MAJOR.MINOR.PATCH, increment the:
 - ✅ Documentation prepared
 - ✅ GitHub setup ready
 - ✅ **Caltrans Workflow**: Complete and production-ready
+- ✅ **Tender PDF Ingestion**: State-aware PDF processing service
+- ✅ **Database Schema**: State-partitioned PostgreSQL tables
+- ✅ **API Endpoints**: REST API for tender/bid management
+- ✅ **Docling Integration**: Advanced PDF parsing and table extraction
 - 🚧 Frontend development in progress
 - 🚧 Testing and validation pending
 - ✅ **Workflow Engine**: Advanced n8n integration completed
 
 ### Next Steps - Roadmap
 
-#### Phase 1: Workflow Enhancement (Current Priority)
-1. **API Integration**: Convert workflow output to REST API endpoints
-2. **Database Storage**: Implement PostgreSQL storage for scraped data
-3. **Data Validation**: Add schema validation and error handling
-4. **Monitoring**: Integrate workflow metrics with existing Prometheus setup
+#### Phase 1: PDF Processing & API Enhancement (Current Priority)
+1. ✅ **API Integration**: REST API endpoints for tender/bid management completed
+2. ✅ **Database Storage**: State-partitioned PostgreSQL schema implemented
+3. ✅ **Docling Integration**: PDF parsing and table extraction working
+4. 🚧 **Data Quality (DQ) Policy**: Implement validation and scoring system
+5. 🚧 **N8n Integration**: Connect PDF ingestion with existing workflows
+6. 🚧 **Testing**: Comprehensive testing with real PDF data
+7. **Monitoring**: Integrate PDF processing metrics with Prometheus
 
 #### Phase 2: Frontend Development
 1. Complete React dashboard implementation
@@ -116,17 +134,26 @@ Given a version number MAJOR.MINOR.PATCH, increment the:
 3. Implement backup and disaster recovery
 4. Performance optimization and scaling
 
+#### Phase 3: Multi-State Expansion
+1. **State-Specific Processing**: Add support for TX, FL, NY state agencies
+2. **HEAD_ALIASES Extension**: State-specific column mappings
+3. **Data Standardization**: Unified data format across states
+4. **Performance Optimization**: Multi-state query optimization
+
 #### Phase 4: Advanced Features
-1. Multi-source data integration (other state agencies)
-2. Machine learning for bid analysis
-3. Automated reporting and notifications
-4. API rate limiting and caching
+1. **DQ Policy Implementation**: Complete validation and scoring system
+2. **Machine Learning**: Bid analysis and anomaly detection
+3. **Automated Reporting**: PDF reports and notifications
+4. **API Rate Limiting**: Production-ready API management
+5. **Caching Layer**: Redis integration for performance
 
 ### Files for Development
 
 #### Primary Files
 - **`services/fruxAI/n8n/workflows/caltrans_fixed.json`** - Production-ready Caltrans workflow
 - **`services/fruxAI/api/app/main.py`** - FastAPI backend
+- **`services/fruxAI/api/app/routes/tenders.py`** - Tender PDF ingestion API
+- **`services/fruxAI/api/app/services/docling_processor.py`** - PDF processing service
 - **`services/fruxAI/worker/main.py`** - Python worker service
 
 #### Configuration Files
@@ -137,6 +164,8 @@ Given a version number MAJOR.MINOR.PATCH, increment the:
 #### Database & Schema
 - **`services/fruxAI/config/init-db.sql`** - Database initialization
 - **`services/fruxAI/api/app/models/`** - SQLAlchemy models
+- **`services/fruxAI/api/app/models/tender.py`** - Tender, Bid, Firm models (state-aware)
+- **`validation-matrix.md`** - Data Quality (DQ) policy specification
 
 #### Documentation
 - **`README.md`** - Main project documentation

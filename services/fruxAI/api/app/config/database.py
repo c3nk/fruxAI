@@ -97,12 +97,91 @@ async def init_db():
                 )
             """)
 
+            # Create tender-related tables
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS tenders (
+                    id SERIAL PRIMARY KEY,
+                    state VARCHAR(2) NOT NULL,
+                    file_name VARCHAR(255) NOT NULL,
+                    contract_number VARCHAR(50),
+                    project_id VARCHAR(50),
+                    bid_opening_date DATE,
+                    title TEXT,
+                    location TEXT,
+                    winner_firm_id VARCHAR(100),
+                    winner_amount DECIMAL(15,2),
+                    currency VARCHAR(3) DEFAULT 'USD',
+                    extraction_info JSONB,
+                    status VARCHAR(20) DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(state, file_name),
+                    UNIQUE(state, contract_number),
+                    UNIQUE(state, project_id)
+                )
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS firms (
+                    state VARCHAR(2) NOT NULL,
+                    firm_id VARCHAR(100) NOT NULL,
+                    name_official TEXT,
+                    cslb_number VARCHAR(50),
+                    address TEXT,
+                    city VARCHAR(100),
+                    state_code VARCHAR(2),
+                    zip VARCHAR(10),
+                    phone VARCHAR(20),
+                    fax VARCHAR(20),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (state, firm_id)
+                )
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS bids (
+                    id SERIAL PRIMARY KEY,
+                    state VARCHAR(2) NOT NULL,
+                    tender_id INTEGER,
+                    firm_id VARCHAR(100) NOT NULL,
+                    bid_amount DECIMAL(15,2) NOT NULL,
+                    currency VARCHAR(3) DEFAULT 'USD',
+                    rank INTEGER,
+                    preference VARCHAR(10),
+                    cslb_number VARCHAR(50),
+                    name_official TEXT,
+                    UNIQUE(state, tender_id, firm_id)
+                )
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS tender_winner_history (
+                    id SERIAL PRIMARY KEY,
+                    state VARCHAR(2) NOT NULL,
+                    tender_id INTEGER,
+                    firm_id VARCHAR(100),
+                    source VARCHAR(20),
+                    changed_by VARCHAR(100),
+                    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    note TEXT
+                )
+            """)
+
             # Create indexes for better performance
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_jobs_status ON crawl_jobs(status)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawl_jobs_created_at ON crawl_jobs(created_at)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_crawl_job_id ON metadata(crawl_job_id)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_url ON metadata(url)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_company_name ON metadata(company_name)")
+
+            # Tender-related indexes
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_tenders_state ON tenders(state)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_tenders_file_name ON tenders(file_name)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_tenders_contract_number ON tenders(contract_number)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_tenders_project_id ON tenders(project_id)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_bids_state ON bids(state)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_bids_tender_id ON bids(tender_id)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_firms_state ON firms(state)")
 
             logger.info("Database initialized successfully")
     except Exception as e:
