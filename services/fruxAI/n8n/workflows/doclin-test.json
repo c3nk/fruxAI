@@ -1,0 +1,225 @@
+{
+  "name": "PDF Processor - pdfplumber + markdownify",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ddae90d1-8627-4321-af15-6284e5e52330",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -928,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "fileName",
+              "value": "/tmp/n8n-data/08-0R0104.pdf"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "13df27ed-21cf-4be2-80d4-4db74caa80fd",
+      "name": "Set File Name",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -752,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $json.fileName }}"
+      },
+      "id": "72028838-589d-4217-9c18-64df05b86bd6",
+      "name": "Read PDF File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/api/v1/ingest",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "CA"
+            },
+            {
+              "name": "file",
+              "value": "={{$binary.data}}",
+              "parameterType": "formBinaryData"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cbfe04f9-545e-487c-b7f7-5088764b47f2",
+      "name": "PDF Processor API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "ec574b82-2e8d-4da9-81e6-bc44c0e8c687",
+      "name": "Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8001/api/v1/state/CA/tenders",
+        "sendHeaders": true,
+        "options": {}
+      },
+      "id": "20f1e38b-8959-48fd-92b9-395865d43da3",
+      "name": "Get Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        256,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "contract_number",
+              "value": "={{ $json.data[0]?.contract_number || 'No data' }}"
+            },
+            {
+              "name": "project_title",
+              "value": "={{ $json.data[0]?.title || 'No data' }}"
+            },
+            {
+              "name": "total_bids",
+              "value": "={{ $json.data[0]?.extraction_info?.bids?.length || 0 }}"
+            },
+            {
+              "name": "lowest_bid",
+              "value": "={{ $json.data[0]?.extraction_info?.bids?.[0]?.bid_amount || 'No data' }}"
+            },
+            {
+              "name": "engineers_estimate",
+              "value": "={{ $json.data[0]?.extraction_info?.engineers_estimate || 'No data' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f91a3c9e-8d6e-4014-ac97-0fd7d1b5d371",
+      "name": "Format Results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -320
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set File Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set File Name": {
+      "main": [
+        [
+          {
+            "node": "Read PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDF File": {
+      "main": [
+        [
+          {
+            "node": "Docling API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Docling API": {
+      "main": [
+        [
+          {
+            "node": "Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Get Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Results": {
+      "main": [
+        [
+          {
+            "node": "Format Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "737614d9-3b56-48b9-8033-1bbd24641c2f",
+  "meta": {
+    "instanceId": "d9de649d9af8946ad047dadf573027d979ff5bc9410edc4577af582fc20a5cd5"
+  },
+  "id": "Ut0wvIcXfsOR7UvS",
+  "tags": []
+}

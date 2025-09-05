@@ -64,3 +64,4 @@ class TenderWinnerHistory(Base):
     changed_by = Column(String(100))
     changed_at = Column(TIMESTAMP, default=func.now())
     note = Column(Text)
+

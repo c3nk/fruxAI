@@ -34,12 +34,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(health.router, prefix="/api/v1")
-app.include_router(crawl_jobs.router, prefix="/api/v1")
-app.include_router(metadata.router, prefix="/api/v1")
-app.include_router(reports.router, prefix="/api/v1")
-app.include_router(caltrans_bids.router)
-app.include_router(tenders.router, prefix="/api/v1")
+app.include_router(health, prefix="/fruxAI/api/v1")
+app.include_router(crawl_jobs, prefix="/fruxAI/api/v1")
+app.include_router(metadata, prefix="/fruxAI/api/v1")
+app.include_router(reports, prefix="/fruxAI/api/v1")
+app.include_router(caltrans_bids, prefix="/fruxAI/api/v1")
+app.include_router(tenders, prefix="/fruxAI/api/v1")
 
 @app.get("/fruxAI/api/v1/health")
 async def health_check():

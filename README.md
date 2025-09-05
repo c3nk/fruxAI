@@ -1,6 +1,6 @@
-# fruxAI - Crawler Orchestration & Metadata Management
+# fruxAI - AI-Powered Tender PDF Processing & Crawler Orchestration
 
-fruxAI, web sitelerini akıllı bir şekilde tarayan, PDF ve HTML içeriklerini işleyen ve metadata çıkaran bir crawler orchestration sistemidir.
+fruxAI, devlet ihale belgelerini akıllı bir şekilde işleyen, PDF içeriklerini analiz eden ve metadata çıkaran bir AI destekli crawler orchestration sistemidir. Caltrans ihale verilerini otomatik olarak toplar, işler ve yapılandırılmış veriye dönüştürür.
 
 ## 📁 Proje Yapısı
 

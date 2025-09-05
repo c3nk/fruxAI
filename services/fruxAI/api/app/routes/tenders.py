@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
 from typing import Optional, List, Dict, Any
 from app.config.database import get_connection
-from app.services.docling_processor import DoclingProcessor
+from app.services.pdf_processor import PdfProcessor
 import logging
 import os
 import json
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize Docling processor
-docling_processor = DoclingProcessor()
+# Initialize PDF processor
+pdf_processor = PdfProcessor()
 
 # HEAD_ALIASES for PDF parsing
 HEAD_ALIASES = {
@@ -67,13 +67,52 @@ async def get_tenders(
     """
     Get tenders for a specific state with optional filters
     """
-    # For now, return empty list since we don't have data yet
-    return {
-        "status": "success",
-        "state": state,
-        "count": 0,
-        "data": []
-    }
+    try:
+        async with get_connection() as session:
+            # Simple query
+            query = """
+                SELECT id, state, file_name, contract_number, project_id,
+                       bid_opening_date, title, location, winner_firm_id,
+                       winner_amount, currency, extraction_info, status,
+                       created_at, updated_at
+                FROM tenders
+                WHERE state = $1
+                ORDER BY created_at DESC
+                LIMIT $2 OFFSET $3
+            """
+
+            rows = await session.fetch(query, state, limit, offset)
+
+            tenders = []
+            for row in rows:
+                tenders.append({
+                    'id': row['id'],
+                    'state': row['state'],
+                    'file_name': row['file_name'],
+                    'contract_number': row['contract_number'],
+                    'project_id': row['project_id'],
+                    'bid_opening_date': row['bid_opening_date'].isoformat() if row['bid_opening_date'] else None,
+                    'title': row['title'],
+                    'location': row['location'],
+                    'winner_firm_id': row['winner_firm_id'],
+                    'winner_amount': float(row['winner_amount']) if row['winner_amount'] else None,
+                    'currency': row['currency'],
+                    'extraction_info': row['extraction_info'],
+                    'status': row['status'],
+                    'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                    'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
+                })
+
+            return {
+                "status": "success",
+                "state": state,
+                "count": len(tenders),
+                "data": tenders
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching tenders: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/state/{state}/tenders/{tender_id}/bids")
 async def get_tender_bids(state: str, tender_id: int):
@@ -172,28 +211,35 @@ async def download_markdown_table(state: str, pdf_stem: str, table_name: str):
 
 async def process_pdf_background(state: str, filename: str, file_path: str):
     """
-    Background task to process PDF with Docling and save results
+    Background task to process PDF with pdfplumber + markdownify and save results
     """
     logger.info(f"Processing PDF: {filename} for state {state}")
 
     try:
-        # Process PDF with Docling
-        result = await docling_processor.process_pdf(file_path, state)
+        # Process PDF with new processor
+        result = await pdf_processor.process_pdf(file_path, state)
 
-        if 'error' in result:
-            logger.error(f"PDF processing failed: {result['error']}")
+        if result['status'] != 'success':
+            logger.error(f"PDF processing failed: {result}")
             return
 
-        # Save to database
-        await save_to_database(result)
+        # Create simplified tender data for database
+        tender_data = {
+            'state': state,
+            'file_name': filename,
+            'contract_number': result['metadata'].get('contract_number'),
+            'project_id': result['metadata'].get('project_id'),
+            'bid_opening_date': result['metadata'].get('bid_opening_date'),
+            'title': f"Contract {result['metadata'].get('contract_number', 'Unknown')}",
+            'winner_firm_id': None,
+            'winner_amount': None,
+            'currency': 'USD',
+            'extraction_info': result['extraction_info'],
+            'status': 'processed'
+        }
 
-        # Create exports
-        pdf_stem = filename.replace('.pdf', '')
-        await create_exports(state, pdf_stem, result)
-
-        # Move to processed directory
-        processed_path = f"/app/storage/pdfs/{state}/processed/{filename}"
-        os.rename(file_path, processed_path)
+        # Simplified database save (without bids/firms for now)
+        await save_to_database_simple(tender_data, result)
 
         logger.info(f"PDF processing completed: {filename}")
 
@@ -201,7 +247,47 @@ async def process_pdf_background(state: str, filename: str, file_path: str):
         logger.error(f"Error in background processing: {e}")
         # Move to processed anyway to avoid re-processing
         processed_path = f"/app/storage/pdfs/{state}/processed/{filename}"
-        os.rename(file_path, processed_path)
+        if os.path.exists(file_path):
+            os.rename(file_path, processed_path)
+
+async def save_to_database_simple(tender_data: Dict[str, Any], result: Dict[str, Any]):
+    """Simplified database save for new processor results"""
+    try:
+        async with get_connection() as session:
+            # Insert tender
+            tender_result = await session.execute(
+                text("""
+                    INSERT INTO tenders (state, file_name, contract_number, project_id,
+                                       bid_opening_date, title, winner_firm_id, winner_amount,
+                                       currency, extraction_info, status)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    ON CONFLICT (state, file_name) DO UPDATE SET
+                        contract_number = EXCLUDED.contract_number,
+                        project_id = EXCLUDED.project_id,
+                        bid_opening_date = EXCLUDED.bid_opening_date,
+                        title = EXCLUDED.title,
+                        extraction_info = EXCLUDED.extraction_info,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id
+                """),
+                [
+                    tender_data['state'], tender_data['file_name'], tender_data.get('contract_number'),
+                    tender_data.get('project_id'), tender_data.get('bid_opening_date'), tender_data.get('title'),
+                    tender_data.get('winner_firm_id'), tender_data.get('winner_amount'), tender_data.get('currency'),
+                    json.dumps(tender_data.get('extraction_info'), default=str), tender_data.get('status')
+                ]
+            )
+
+            tender_row = tender_result.fetchone()
+            if tender_row:
+                tender_id = tender_row[0]
+                logger.info(f"Saved tender {tender_id} for file {tender_data['file_name']}")
+
+            await session.commit()
+
+    except Exception as e:
+        logger.error(f"Error saving to database: {e}")
+        raise
 
 async def save_to_database(result: Dict[str, Any]):
     """Save processing results to database"""

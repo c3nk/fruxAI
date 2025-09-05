@@ -1,0 +1,48 @@
+{
+  "name": "Simple PDF Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/api/v1/ingest-json",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "sendBody": true,
+        "bodyContentType": "raw",
+        "bodyContentCustomMimeType": "application/json",
+        "bodyContent": "{\"state\":\"CA\",\"file_path\":\"/tmp/08-0R0104.pdf\"}"
+      },
+      "id": "api-call",
+      "name": "API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
